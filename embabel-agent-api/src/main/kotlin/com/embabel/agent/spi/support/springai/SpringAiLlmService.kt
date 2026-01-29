@@ -15,6 +15,7 @@
  */
 package com.embabel.agent.spi.support.springai
 
+import com.embabel.agent.spi.ChatModelDecorator
 import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.loop.LlmMessageSender
 import com.embabel.common.ai.model.*
@@ -42,6 +43,7 @@ import java.time.LocalDate
  * @param promptContributors List of prompt contributors for this model.
  *        Knowledge cutoff is automatically included if knowledgeCutoffDate is set.
  * @param pricingModel Pricing model for this LLM, if known
+ * @param chatModelDecorator Decorator to wrap the ChatModel before use (e.g., for Temporal integration)
  */
 @JsonSerialize(`as` = LlmMetadata::class)
 data class SpringAiLlmService @JvmOverloads constructor(
@@ -54,6 +56,7 @@ data class SpringAiLlmService @JvmOverloads constructor(
     override val promptContributors: List<PromptContributor> =
         buildList { knowledgeCutoffDate?.let { add(KnowledgeCutoffDate(it)) } },
     override val pricingModel: PricingModel? = null,
+    val chatModelDecorator: ChatModelDecorator = ChatModelDecorator.IDENTITY,
 ) : LlmService<SpringAiLlmService>, AiModel<ChatModel> {
 
     /**
@@ -64,7 +67,8 @@ data class SpringAiLlmService @JvmOverloads constructor(
 
     override fun createMessageSender(options: LlmOptions): LlmMessageSender {
         val chatOptions = optionsConverter.convertOptions(options)
-        return SpringAiLlmMessageSender(chatModel, chatOptions)
+        val effectiveChatModel = chatModelDecorator.decorate(chatModel)
+        return SpringAiLlmMessageSender(effectiveChatModel, chatOptions)
     }
 
     override fun withKnowledgeCutoffDate(date: LocalDate): SpringAiLlmService =
@@ -81,4 +85,10 @@ data class SpringAiLlmService @JvmOverloads constructor(
      */
     fun withOptionsConverter(converter: OptionsConverter<*>): SpringAiLlmService =
         copy(optionsConverter = converter)
+
+    /**
+     * Returns a copy with a different ChatModel decorator.
+     */
+    fun withChatModelDecorator(decorator: ChatModelDecorator): SpringAiLlmService =
+        copy(chatModelDecorator = decorator)
 }
