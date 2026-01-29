@@ -23,6 +23,7 @@ import com.embabel.agent.core.Usage
 import com.embabel.agent.core.support.LlmCall
 import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.AutoLlmSelectionCriteriaResolver
+import com.embabel.agent.spi.LlmExecutionStrategy
 import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.ToolDecorator
 import com.embabel.agent.spi.loop.LlmMessageSender
@@ -83,6 +84,7 @@ interface OutputConverter<T> {
  * @param promptsProperties Properties for prompt configuration
  * @param objectMapper ObjectMapper for JSON serialization
  * @param observationRegistry Registry for distributed tracing observations
+ * @param executionStrategy Strategy for executing LLM operations with timeout
  */
 open class ToolLoopLlmOperations(
     modelProvider: ModelProvider,
@@ -94,6 +96,7 @@ open class ToolLoopLlmOperations(
     promptsProperties: LlmOperationsPromptsProperties = LlmOperationsPromptsProperties(),
     internal open val objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule()),
     protected val observationRegistry: ObservationRegistry = ObservationRegistry.NOOP,
+    executionStrategy: LlmExecutionStrategy = DefaultLlmExecutionStrategy(),
 ) : AbstractLlmOperations(
     toolDecorator = toolDecorator,
     modelProvider = modelProvider,
@@ -102,6 +105,7 @@ open class ToolLoopLlmOperations(
     dataBindingProperties = dataBindingProperties,
     autoLlmSelectionCriteriaResolver = autoLlmSelectionCriteriaResolver,
     promptsProperties = promptsProperties,
+    executionStrategy = executionStrategy,
 ) {
 
     override fun <O> doTransform(

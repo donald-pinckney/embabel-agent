@@ -22,6 +22,7 @@ import com.embabel.agent.core.AgentProcess
 import com.embabel.agent.core.support.InvalidLlmReturnTypeException
 import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.AutoLlmSelectionCriteriaResolver
+import com.embabel.agent.spi.LlmExecutionStrategy
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.ToolDecorator
@@ -38,14 +39,6 @@ import jakarta.validation.Validator
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.time.Duration
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
-
-// Log message constants to avoid duplication
-private const val LLM_TIMEOUT_MESSAGE = "LLM {}: attempt {} timed out after {}ms"
-private const val LLM_INTERRUPTED_MESSAGE = "LLM {}: attempt {} was interrupted"
 
 /**
  * Convenient superclass for LlmOperations implementations,
@@ -61,19 +54,25 @@ abstract class AbstractLlmOperations(
     private val autoLlmSelectionCriteriaResolver: AutoLlmSelectionCriteriaResolver,
     protected val dataBindingProperties: LlmDataBindingProperties,
     protected val promptsProperties: LlmOperationsPromptsProperties = LlmOperationsPromptsProperties(),
+    private val executionStrategy: LlmExecutionStrategy = DefaultLlmExecutionStrategy(),
 ) : LlmOperations {
 
     protected val logger: Logger = LoggerFactory.getLogger(javaClass)
 
     /**
+     * Get timeout from options or default.
+     */
+    protected fun getTimeout(llmOptions: LlmOptions): Duration =
+        llmOptions.timeout ?: promptsProperties.defaultTimeout
+
+    /**
      * Get timeout in milliseconds from options or default.
      */
     protected fun getTimeoutMillis(llmOptions: LlmOptions): Long =
-        (llmOptions.timeout ?: promptsProperties.defaultTimeout).toMillis()
+        getTimeout(llmOptions).toMillis()
 
     /**
-     * Execute an LLM operation with timeout.
-     * Wraps the operation in a CompletableFuture with configured timeout.
+     * Execute an LLM operation with timeout using the configured execution strategy.
      *
      * @param interactionId Identifier for logging
      * @param llmOptions Options containing timeout configuration
@@ -88,42 +87,12 @@ abstract class AbstractLlmOperations(
         attempt: Int = 1,
         operation: () -> T,
     ): T {
-        val timeoutMillis = getTimeoutMillis(llmOptions)
-
-        val future = CompletableFuture.supplyAsync { operation() }
-
-        return try {
-            future.get(timeoutMillis, TimeUnit.MILLISECONDS)
-        } catch (e: TimeoutException) {
-            future.cancel(true)
-            logger.warn(LLM_TIMEOUT_MESSAGE, interactionId, attempt, timeoutMillis)
-            throw RuntimeException(
-                "LLM call for interaction $interactionId timed out after ${timeoutMillis}ms",
-                e
-            )
-        } catch (e: InterruptedException) {
-            future.cancel(true)
-            Thread.currentThread().interrupt()
-            logger.warn(LLM_INTERRUPTED_MESSAGE, interactionId, attempt)
-            throw RuntimeException(
-                "LLM call for interaction $interactionId was interrupted",
-                e
-            )
-        } catch (e: ExecutionException) {
-            future.cancel(true)
-            val cause = e.cause
-            when (cause) {
-                is RuntimeException -> throw cause
-                is Exception -> throw RuntimeException(
-                    "LLM call for interaction $interactionId failed",
-                    cause
-                )
-                else -> throw RuntimeException(
-                    "LLM call for interaction $interactionId failed with unknown error",
-                    e
-                )
-            }
-        }
+        return executionStrategy.execute(
+            interactionId = interactionId,
+            timeout = getTimeout(llmOptions),
+            attempt = attempt,
+            operation = operation,
+        )
     }
 
     final override fun <O> createObject(
