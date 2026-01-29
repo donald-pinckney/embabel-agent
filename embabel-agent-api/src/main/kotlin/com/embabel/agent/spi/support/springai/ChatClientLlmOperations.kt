@@ -19,9 +19,11 @@ import com.embabel.agent.api.event.LlmRequestEvent
 import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.core.support.toEmbabelUsage
 import com.embabel.agent.spi.AutoLlmSelectionCriteriaResolver
+import com.embabel.agent.spi.LlmExecutionStrategy
 import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.ToolDecorator
 import com.embabel.agent.spi.loop.LlmMessageSender
+import com.embabel.agent.spi.support.DefaultLlmExecutionStrategy
 import com.embabel.agent.spi.support.LlmDataBindingProperties
 import com.embabel.agent.spi.support.LlmOperationsPromptsProperties
 import com.embabel.agent.spi.support.OutputConverter
@@ -83,6 +85,7 @@ private const val LLM_INTERRUPTED_MESSAGE = "LLM {}: attempt {} was interrupted"
  * @param toolDecorator ToolDecorator to decorate tools to make them aware of platform
  * @param templateRenderer TemplateRenderer to render templates
  * @param dataBindingProperties properties
+ * @param executionStrategy Strategy for executing LLM operations with timeout
  */
 @Service
 internal class ChatClientLlmOperations(
@@ -98,6 +101,7 @@ internal class ChatClientLlmOperations(
     objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule()),
     observationRegistry: ObservationRegistry = ObservationRegistry.NOOP,
     private val customizers: List<ChatClientCustomizer> = emptyList(),
+    executionStrategy: LlmExecutionStrategy = DefaultLlmExecutionStrategy(),
 ) : ToolLoopLlmOperations(
     toolDecorator = toolDecorator,
     modelProvider = modelProvider,
@@ -108,6 +112,7 @@ internal class ChatClientLlmOperations(
     promptsProperties = llmOperationsPromptsProperties,
     objectMapper = objectMapper,
     observationRegistry = observationRegistry,
+    executionStrategy = executionStrategy,
 ) {
 
     @PostConstruct
