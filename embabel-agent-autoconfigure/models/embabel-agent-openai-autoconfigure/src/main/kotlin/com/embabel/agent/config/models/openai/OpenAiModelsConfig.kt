@@ -19,6 +19,7 @@ import com.embabel.agent.api.models.OpenAiModels
 import com.embabel.agent.openai.Gpt5ChatOptionsConverter
 import com.embabel.agent.openai.OpenAiCompatibleModelFactory
 import com.embabel.agent.openai.StandardOpenAiOptionsConverter
+import com.embabel.agent.spi.ChatModelDecorator
 import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.common.RetryProperties
 import com.embabel.agent.spi.support.springai.SpringAiLlmService
@@ -109,6 +110,7 @@ class OpenAiModelsConfig(
     private val properties: OpenAiProperties,
     private val configurableBeanFactory: ConfigurableBeanFactory,
     private val modelLoader: LlmAutoConfigMetadataLoader<OpenAiModelDefinitions> = OpenAiModelLoader(),
+    chatModelDecoratorProvider: ObjectProvider<ChatModelDecorator>,
 ) : OpenAiCompatibleModelFactory(
     baseUrl = envBaseUrl ?: properties.baseUrl,
     apiKey = envApiKey ?: properties.apiKey
@@ -119,8 +121,14 @@ class OpenAiModelsConfig(
     requestFactory,
 ) {
 
+    private val chatModelDecorator: ChatModelDecorator =
+        chatModelDecoratorProvider.getIfAvailable { ChatModelDecorator.IDENTITY }
+
     init {
         logger.info("OpenAI models are available: {}", properties)
+        if (chatModelDecorator !== ChatModelDecorator.IDENTITY) {
+            logger.info("Using ChatModelDecorator: {}", chatModelDecorator::class.simpleName)
+        }
     }
 
     @Bean
@@ -204,6 +212,7 @@ class OpenAiModelsConfig(
             optionsConverter = optionsConverter,
             knowledgeCutoffDate = modelDef.knowledgeCutoffDate,
             pricingModel = pricingModel,
+            chatModelDecorator = chatModelDecorator,
         )
     }
 
